@@ -82,6 +82,11 @@ jobs:
         run: make ${{ matrix.make_target }}
 
       - name: Smoke test binary
+        # Only test on native architecture to avoid cross-compilation issues
+        if: |
+          (matrix.target == 'x86_64-unknown-linux-gnu' && runner.os == 'Linux') ||
+          (matrix.target == 'aarch64-apple-darwin' && runner.os == 'macOS') ||
+          (matrix.target == 'x86_64-pc-windows-msvc' && runner.os == 'Windows')
         shell: bash
         run: |
           chmod +x dist/${{ matrix.artifact_name }} || true

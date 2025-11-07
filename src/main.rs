@@ -17,7 +17,7 @@ use std::{io::{self, IsTerminal, Read}, sync::Arc, time::Duration};
 
 #[derive(Parser, Debug)]
 #[command(name = "ai-tran-cli")]
-#[command(about = "AI Translation CLI - A fast and beautiful translation tool", long_about = None)]
+#[command(version, about = "AI Translation CLI - A fast and beautiful translation tool", long_about = None)]
 struct Args {
     /// Quick mode: output translation and exit immediately
     #[arg(short = 'q', long = "quick")]
