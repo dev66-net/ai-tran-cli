@@ -1,0 +1,170 @@
+name: Build Multi-platform Binaries
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  release:
+    types: [created]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            make_target: macos-intel
+            artifact_name: ai-tran-cli-macos-intel
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            make_target: macos-arm
+            artifact_name: ai-tran-cli-macos-arm
+
+          # Linux
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            make_target: linux-amd64
+            artifact_name: ai-tran-cli-linux-amd64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            make_target: linux-arm
+            artifact_name: ai-tran-cli-linux-arm64
+
+          # Windows
+          - os: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+            make_target: windows-x86
+            artifact_name: ai-tran-cli-windows-x86.exe
+          - os: ubuntu-latest
+            target: aarch64-pc-windows-msvc
+            make_target: windows-arm64
+            artifact_name: ai-tran-cli-windows-arm64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install cross-compilation tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-mingw-w64
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build binary
+        run: make ${{ matrix.make_target }}
+
+      - name: Test binary (if native)
+        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
+        run: |
+          echo "Hello" | dist/${{ matrix.artifact_name }} -q
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.artifact_name }}
+
+  create-release:
+    name: Create Release Archives
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p dist-flat
+          find dist -type f -exec mv {} dist-flat/ \;
+          mv dist-flat dist
+
+      - name: Create archives
+        run: |
+          cd dist
+          for file in ai-tran-cli-*; do
+            if [[ $file == *.exe ]]; then
+              zip "${file%.exe}.zip" "$file" ../README.md
+            else
+              tar -czf "$file.tar.gz" "$file" ../README.md
+            fi
+          done
+          shasum -a 256 *.tar.gz *.zip > SHA256SUMS
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run tests
+        run: cargo test --release

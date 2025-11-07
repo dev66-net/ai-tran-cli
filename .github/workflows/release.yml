@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  build-and-upload:
+    name: Build and Upload
+    needs: create-release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install targets
+        run: make install-targets
+
+      - name: Build release
+        run: make release
+
+      - name: Upload macOS Intel
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/releases/ai-tran-cli-*-macos-intel.tar.gz
+          asset_name: ai-tran-cli-macos-intel.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload macOS ARM
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/releases/ai-tran-cli-*-macos-arm.tar.gz
+          asset_name: ai-tran-cli-macos-arm.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Linux AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/releases/ai-tran-cli-*-linux-amd64.tar.gz
+          asset_name: ai-tran-cli-linux-amd64.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Linux ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/releases/ai-tran-cli-*-linux-arm64.tar.gz
+          asset_name: ai-tran-cli-linux-arm64.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Windows x86
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/releases/ai-tran-cli-*-windows-x86.zip
+          asset_name: ai-tran-cli-windows-x86.zip
+          asset_content_type: application/zip
+
+      - name: Upload Windows ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/releases/ai-tran-cli-*-windows-arm64.zip
+          asset_name: ai-tran-cli-windows-arm64.zip
+          asset_content_type: application/zip
+
+      - name: Upload Checksums
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/releases/SHA256SUMS
+          asset_name: SHA256SUMS
+          asset_content_type: text/plain

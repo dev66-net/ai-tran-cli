@@ -1,0 +1,35 @@
+# Cross-compilation configuration for AI Translation CLI
+
+# Linux targets
+[target.x86_64-unknown-linux-gnu]
+linker = "x86_64-linux-gnu-gcc"
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+
+# Windows targets
+[target.i686-pc-windows-gnu]
+linker = "i686-w64-mingw32-gcc"
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+
+# Build settings
+[build]
+# Increase parallelism
+jobs = 4
+
+# Target-specific flags
+[target.'cfg(all(target_os = "macos", target_arch = "x86_64"))']
+rustflags = ["-C", "link-arg=-mmacosx-version-min=10.13"]
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))']
+rustflags = ["-C", "link-arg=-mmacosx-version-min=11.0"]
+
+# Optimization for release builds
+[profile.release]
+opt-level = "z"      # Optimize for size
+lto = true           # Link-time optimization
+codegen-units = 1    # Better optimization
+strip = true         # Strip symbols
+panic = "abort"      # Smaller binary size
