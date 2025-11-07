@@ -3,118 +3,151 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 permissions:
   contents: write
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            make_target: macos-intel
+            artifact_name: ai-tran-cli-macos-intel
+            archive_name: ai-tran-cli-macos-intel.tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            make_target: macos-arm
+            artifact_name: ai-tran-cli-macos-arm
+            archive_name: ai-tran-cli-macos-arm.tar.gz
 
-    steps:
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
+          # Linux
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            make_target: linux-amd64
+            artifact_name: ai-tran-cli-linux-amd64
+            archive_name: ai-tran-cli-linux-amd64.tar.gz
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            make_target: linux-arm
+            artifact_name: ai-tran-cli-linux-arm64
+            archive_name: ai-tran-cli-linux-arm64.tar.gz
 
-  build-and-upload:
-    name: Build and Upload
-    needs: create-release
-    runs-on: macos-latest
+          # Windows
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            make_target: windows-x64
+            artifact_name: ai-tran-cli-windows-x64.exe
+            archive_name: ai-tran-cli-windows-x64.zip
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
+          targets: ${{ matrix.target }}
 
-      - name: Install targets
-        run: make install-targets
+      - name: Install cross-compilation tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Build release
-        run: make release
+      - name: Build binary
+        run: make ${{ matrix.make_target }}
 
-      - name: Upload macOS Intel
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd dist
+          tar -czf ${{ matrix.archive_name }} ${{ matrix.artifact_name }} ../README.md
+
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd dist
+          Compress-Archive -Path ${{ matrix.artifact_name }}, ../README.md -DestinationPath ${{ matrix.archive_name }}
+
+      - name: Generate checksum
+        shell: bash
+        run: |
+          cd dist
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            shasum -a 256 ${{ matrix.archive_name }} > ${{ matrix.archive_name }}.sha256
+          else
+            sha256sum ${{ matrix.archive_name }} > ${{ matrix.archive_name }}.sha256
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./dist/releases/ai-tran-cli-*-macos-intel.tar.gz
-          asset_name: ai-tran-cli-macos-intel.tar.gz
-          asset_content_type: application/gzip
+          name: ${{ matrix.archive_name }}
+          path: |
+            dist/${{ matrix.archive_name }}
+            dist/${{ matrix.archive_name }}.sha256
 
-      - name: Upload macOS ARM
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./dist/releases/ai-tran-cli-*-macos-arm.tar.gz
-          asset_name: ai-tran-cli-macos-arm.tar.gz
-          asset_content_type: application/gzip
+          path: artifacts
 
-      - name: Upload Linux AMD64
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./dist/releases/ai-tran-cli-*-linux-amd64.tar.gz
-          asset_name: ai-tran-cli-linux-amd64.tar.gz
-          asset_content_type: application/gzip
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
+          cd release
+          cat *.sha256 > SHA256SUMS
+          ls -lh
 
-      - name: Upload Linux ARM64
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./dist/releases/ai-tran-cli-*-linux-arm64.tar.gz
-          asset_name: ai-tran-cli-linux-arm64.tar.gz
-          asset_content_type: application/gzip
+          files: release/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## Downloads
 
-      - name: Upload Windows x86
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./dist/releases/ai-tran-cli-*-windows-x86.zip
-          asset_name: ai-tran-cli-windows-x86.zip
-          asset_content_type: application/zip
+            Choose the binary for your platform:
 
-      - name: Upload Windows ARM64
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./dist/releases/ai-tran-cli-*-windows-arm64.zip
-          asset_name: ai-tran-cli-windows-arm64.zip
-          asset_content_type: application/zip
+            - **macOS Intel**: `ai-tran-cli-macos-intel.tar.gz`
+            - **macOS Apple Silicon**: `ai-tran-cli-macos-arm.tar.gz`
+            - **Linux AMD64**: `ai-tran-cli-linux-amd64.tar.gz`
+            - **Linux ARM64**: `ai-tran-cli-linux-arm64.tar.gz`
+            - **Windows x64**: `ai-tran-cli-windows-x64.zip`
 
-      - name: Upload Checksums
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./dist/releases/SHA256SUMS
-          asset_name: SHA256SUMS
-          asset_content_type: text/plain
+            ## Installation
+
+            ```bash
+            # macOS / Linux
+            tar xzf ai-tran-cli-*.tar.gz
+            chmod +x ai-tran-cli-*
+            ./ai-tran-cli-* --version
+
+            # Windows
+            # Extract zip and run ai-tran-cli-windows-x64.exe
+            ```
+
+            ## Verification
+
+            Verify your download with SHA256:
+            ```bash
+            sha256sum -c ai-tran-cli-*.sha256
+            # or check against SHA256SUMS
+            ```
