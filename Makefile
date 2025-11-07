@@ -17,6 +17,7 @@ TARGET_MACOS_ARM := aarch64-apple-darwin
 TARGET_LINUX_AMD64 := x86_64-unknown-linux-gnu
 TARGET_LINUX_ARM := aarch64-unknown-linux-gnu
 TARGET_WINDOWS_X86 := i686-pc-windows-gnu
+TARGET_WINDOWS_X64 := x86_64-pc-windows-msvc
 TARGET_WINDOWS_ARM64 := aarch64-pc-windows-msvc
 
 # Output binary names
@@ -25,6 +26,7 @@ BIN_MACOS_ARM := $(BINARY_NAME)-macos-arm
 BIN_LINUX_AMD64 := $(BINARY_NAME)-linux-amd64
 BIN_LINUX_ARM := $(BINARY_NAME)-linux-arm64
 BIN_WINDOWS_X86 := $(BINARY_NAME)-windows-x86.exe
+BIN_WINDOWS_X64 := $(BINARY_NAME)-windows-x64.exe
 BIN_WINDOWS_ARM64 := $(BINARY_NAME)-windows-arm64.exe
 
 # Cargo flags
@@ -62,7 +64,7 @@ COLOR_BLUE := \033[34m
 
 # Default target
 .PHONY: all
-all: info macos-intel macos-arm linux-amd64 linux-arm windows-x86 windows-arm64 checksums
+all: info macos-intel macos-arm linux-amd64 linux-arm windows-x86 windows-x64 windows-arm64 checksums
 	@echo "$(COLOR_GREEN)$(COLOR_BOLD)✓ All platforms built successfully!$(COLOR_RESET)"
 	@echo "$(COLOR_BLUE)Build artifacts in: $(BUILD_DIR)/$(COLOR_RESET)"
 	@ls -lh $(BUILD_DIR)/
@@ -86,6 +88,7 @@ install-targets:
 	rustup target add $(TARGET_LINUX_AMD64)
 	rustup target add $(TARGET_LINUX_ARM)
 	rustup target add $(TARGET_WINDOWS_X86)
+	rustup target add $(TARGET_WINDOWS_X64)
 	rustup target add $(TARGET_WINDOWS_ARM64)
 	@echo "$(COLOR_GREEN)✓ All targets installed$(COLOR_RESET)"
 
@@ -158,6 +161,15 @@ windows-x86: prepare
 	@mkdir -p $(BUILD_DIR)
 	@cp $(TARGET_DIR)/$(TARGET_WINDOWS_X86)/release/$(BINARY_NAME).exe $(BUILD_DIR)/$(BIN_WINDOWS_X86)
 	@echo "$(COLOR_GREEN)✓ Built: $(BUILD_DIR)/$(BIN_WINDOWS_X86)$(COLOR_RESET)"
+
+# Windows x64 (64-bit)
+.PHONY: windows-x64
+windows-x64: prepare
+	@echo "$(COLOR_YELLOW)Building for Windows x64 (64-bit)...$(COLOR_RESET)"
+	$(CARGO_BUILD) --target=$(TARGET_WINDOWS_X64)
+	@mkdir -p $(BUILD_DIR)
+	@cp $(TARGET_DIR)/$(TARGET_WINDOWS_X64)/release/$(BINARY_NAME).exe $(BUILD_DIR)/$(BIN_WINDOWS_X64)
+	@echo "$(COLOR_GREEN)✓ Built: $(BUILD_DIR)/$(BIN_WINDOWS_X64)$(COLOR_RESET)"
 
 # Windows ARM64
 .PHONY: windows-arm64

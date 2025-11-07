@@ -40,26 +40,19 @@ jobs:
             artifact_name: ai-tran-cli-linux-arm64
 
           # Windows
-          - os: ubuntu-latest
-            target: x86_64-pc-windows-gnu
-            make_target: windows-x86
-            artifact_name: ai-tran-cli-windows-x86.exe
-          - os: ubuntu-latest
-            target: aarch64-pc-windows-msvc
-            make_target: windows-arm64
-            artifact_name: ai-tran-cli-windows-arm64.exe
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            make_target: windows-x64
+            artifact_name: ai-tran-cli-windows-x64.exe
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+          targets: ${{ matrix.target }}
 
       - name: Install cross-compilation tools (Linux)
         if: runner.os == 'Linux'
@@ -88,10 +81,11 @@ jobs:
       - name: Build binary
         run: make ${{ matrix.make_target }}
 
-      - name: Test binary (if native)
-        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
+      - name: Smoke test binary
+        shell: bash
         run: |
-          echo "Hello" | dist/${{ matrix.artifact_name }} -q
+          chmod +x dist/${{ matrix.artifact_name }} || true
+          dist/${{ matrix.artifact_name }} --version
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -151,11 +145,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache dependencies
         uses: actions/cache@v4
